@@ -10,6 +10,12 @@ import (
 	"github.com/danicat/simpleansi"
 )
 
+type sprite struct {
+	row int
+	col int
+}
+
+var player sprite
 var maze []string
 
 func loadMaze(filePath string) error {
@@ -25,34 +31,37 @@ func loadMaze(filePath string) error {
 		maze = append(maze, line)
 	}
 
+	for row, line := range maze {
+		for col, char := range line {
+			switch char {
+			case 'P':
+				player = sprite{row, col}
+			}
+		}
+	}
+
 	return nil
 }
 
 func printScreen() {
 	simpleansi.ClearScreen()
 	for _, line := range maze {
-		fmt.Println(line)
+		for _, chr := range line {
+			switch chr {
+			case '#':
+				fmt.Printf("%c", chr)
+			default:
+				fmt.Print(" ")
+			}
+		}
+		fmt.Println()
 	}
-}
 
-func initialize() {
-	cbTerm := exec.Command("stty", "cbreak", "-echo")
-	cbTerm.Stdin = os.Stdin
+	simpleansi.MoveCursor(player.row, player.col)
+	fmt.Print("P")
 
-	err := cbTerm.Run()
-	if err != nil {
-		log.Fatal("unable to activate cbreak mode:", err)
-	}
-}
-
-func cleanup() {
-	cookedTerm := exec.Command("stty", "-cbreak", "echo")
-	cookedTerm.Stdin = os.Stdin
-
-	err := cookedTerm.Run()
-	if err != nil {
-		log.Fatal("unable to restore cooked mode:", err)
-	}
+	// Move cursor outside of maze drawing area
+	simpleansi.MoveCursor(len(maze)+1, 0)
 }
 
 func readInput() (string, error) {
@@ -65,13 +74,84 @@ func readInput() (string, error) {
 
 	if cnt == 1 && buffer[0] == 0x1b {
 		return "ESC", nil
+	} else if cnt >= 3 {
+		if buffer[0] == 0x1b && buffer[1] == '[' {
+			switch buffer[2] {
+			case 'A':
+				return "UP", nil
+			case 'B':
+				return "DOWN", nil
+			case 'C':
+				return "RIGHT", nil
+			case 'D':
+				return "LEFT", nil
+			}
+		}
 	}
 
 	return "", nil
 }
 
+func makeMove(oldRow, oldCol int, dir string) (newRow, newCol int) {
+	newRow, newCol = oldRow, oldCol
+
+	switch dir {
+	case "UP":
+		newRow = newRow - 1
+		if newRow < 0 {
+			newRow = len(maze) - 1
+		}
+	case "DOWN":
+		newRow = newRow + 1
+		if newRow == len(maze) {
+			newRow = 0
+		}
+	case "RIGHT":
+		newCol = newCol + 1
+		if newCol == len(maze[0]) {
+			newCol = 0
+		}
+	case "LEFT":
+		newCol = newCol - 1
+		if newCol < 0 {
+			newCol = len(maze[0]) - 1
+		}
+	}
+
+	if maze[newRow][newCol] == '#' {
+		newRow = oldRow
+		newCol = oldCol
+	}
+
+	return
+}
+
+func movePlayer(dir string) {
+	player.row, player.col = makeMove(player.row, player.col, dir)
+}
+
+func initialize() {
+	cbTerm := exec.Command("stty", "cbreak", "-echo")
+	cbTerm.Stdin = os.Stdin
+
+	err := cbTerm.Run()
+	if err != nil {
+		log.Fatalln("unable to activate cbreak mode:", err)
+	}
+}
+
+func cleanup() {
+	cookedTerm := exec.Command("stty", "-cbreak", "echo")
+	cookedTerm.Stdin = os.Stdin
+
+	err := cookedTerm.Run()
+	if err != nil {
+		log.Fatalln("unable to activate cooked mode:", err)
+	}
+}
+
 func main() {
-	// initialize game
+	// initialise game
 	initialize()
 	defer cleanup()
 
@@ -86,20 +166,24 @@ func main() {
 	for {
 		// update screen
 		printScreen()
+
 		// process input
 		input, err := readInput()
 		if err != nil {
-			log.Print("error reading input:", err)
+			log.Println("error reading input:", err)
 			break
 		}
+
 		// process movement
+		movePlayer(input)
 
 		// process collisions
 
-		// Temp: break infinite loop
+		// check game over
 		if input == "ESC" {
 			break
 		}
+
 		// repeat
 	}
 }
