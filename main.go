@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -39,6 +40,11 @@ var maze []string
 var score int
 var numDots int
 var lives int = 1
+
+var (
+	configFile = flag.String("config-file", "config.json", "path to custom configuration file")
+	mazeFile   = flag.String("maze-file", "maze01.txt", "path to a custom maze file")
+)
 
 func loadConfig(file string) error {
 	f, err := os.Open(file)
@@ -78,7 +84,7 @@ func loadMaze(filePath string) error {
 		}
 	}
 
-	err = loadConfig("config.json")
+	err = loadConfig(*configFile)
 	if err != nil {
 		log.Panicln("failed to load configuration: ", err)
 		return err
@@ -243,12 +249,13 @@ func cleanup() {
 }
 
 func main() {
-	// initialise game
+	flag.Parse()
+	// initialize game
 	initialize()
 	defer cleanup()
 
 	// load resources
-	err := loadMaze("maze01.txt")
+	err := loadMaze(*mazeFile)
 	if err != nil {
 		log.Println("failed to load maze", err)
 		return
