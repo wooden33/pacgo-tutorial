@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/danicat/simpleansi"
 )
@@ -19,6 +20,10 @@ type sprite struct {
 var player sprite
 var ghosts []*sprite
 var maze []string
+
+var score int
+var numDots int
+var lives int = 1
 
 func loadMaze(filePath string) error {
 	f, err := os.Open(filePath)
@@ -40,6 +45,8 @@ func loadMaze(filePath string) error {
 				player = sprite{row, col}
 			case 'G':
 				ghosts = append(ghosts, &sprite{row, col})
+			case '.':
+				numDots++
 			}
 		}
 	}
@@ -53,6 +60,8 @@ func printScreen() {
 		for _, chr := range line {
 			switch chr {
 			case '#':
+				fallthrough
+			case '.':
 				fmt.Printf("%c", chr)
 			default:
 				fmt.Print(" ")
@@ -70,7 +79,8 @@ func printScreen() {
 	fmt.Print("P")
 
 	// Move cursor outside of maze drawing area
-	simpleansi.MoveCursor(len(maze)+1, 0)
+	simpleansi.MoveCursor(len(maze), 0)
+	fmt.Println("Score: ", score, "\tLives: ", lives)
 }
 
 func readInput() (string, error) {
@@ -148,6 +158,13 @@ func makeMove(oldRow, oldCol int, dir string) (newRow, newCol int) {
 
 func movePlayer(dir string) {
 	player.row, player.col = makeMove(player.row, player.col, dir)
+	switch maze[player.row][player.col] {
+	case '.':
+		numDots--
+		score++
+		// Remove dot from the maze
+		maze[player.row] = maze[player.row][:player.col] + " " + maze[player.row][player.col+1:]
+	}
 }
 
 func moveGhosts() {
@@ -189,28 +206,47 @@ func main() {
 		return
 	}
 
+	// process input (async)
+	input := make(chan string)
+	go func(ch chan<- string) {
+		for {
+			input, err := readInput()
+			if err != nil {
+				log.Println("error reading input: ", err)
+				ch <- "ESC"
+			}
+			ch <- input
+		}
+	}(input)
+
 	// game loop
 	for {
 		// update screen
 		printScreen()
 
-		// process input
-		input, err := readInput()
-		if err != nil {
-			log.Println("error reading input:", err)
-			break
-		}
-
 		// process movement
-		movePlayer(input)
+		select {
+		case inp := <-input:
+			if inp == "ESC" {
+				lives = 0
+			}
+			movePlayer(inp)
+		default:
+		}
 		moveGhosts()
 		// process collisions
+		for _, g := range ghosts {
+			if player == *g {
+				lives = 0
+			}
+		}
 
 		// check game over
-		if input == "ESC" {
+		if numDots == 0 || lives <= 0 {
 			break
 		}
 
 		// repeat
+		time.Sleep(200 * time.Millisecond)
 	}
 }
