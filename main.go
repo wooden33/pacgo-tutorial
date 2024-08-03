@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,14 +10,17 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/danicat/simpleansi"
 )
 
 type sprite struct {
-	row int
-	col int
+	row      int
+	col      int
+	startRow int
+	startCol int
 }
 
 // Config holds the emoji configuration
@@ -39,7 +43,7 @@ var maze []string
 
 var score int
 var numDots int
-var lives int = 1
+var lives int = 3
 
 var (
 	configFile = flag.String("config-file", "config.json", "path to custom configuration file")
@@ -75,9 +79,9 @@ func loadMaze(filePath string) error {
 		for col, char := range line {
 			switch char {
 			case 'P':
-				player = sprite{row, col}
+				player = sprite{row, col, row, col}
 			case 'G':
-				ghosts = append(ghosts, &sprite{row, col})
+				ghosts = append(ghosts, &sprite{row, col, row, col})
 			case '.':
 				numDots++
 			}
@@ -126,8 +130,21 @@ func printScreen() {
 	fmt.Print(cfg.Player)
 
 	// Move cursor outside of maze drawing area
-	simpleansi.MoveCursor(len(maze)+1, 0)
-	fmt.Println("Score: ", score, "\tLives: ", lives)
+	moveCursor(len(maze)+1, 0)
+	livesRemaining := strconv.Itoa(lives)
+	if cfg.UseEmoji {
+		livesRemaining = getLivesAsEmoji()
+	}
+
+	fmt.Println("Score: ", score, "\tLives: ", livesRemaining)
+}
+
+func getLivesAsEmoji() string {
+	buf := bytes.Buffer{}
+	for i := lives; i > 0; i-- {
+		buf.WriteString(cfg.Player)
+	}
+	return buf.String()
 }
 
 func readInput() (string, error) {
@@ -291,8 +308,15 @@ func main() {
 		moveGhosts()
 		// process collisions
 		for _, g := range ghosts {
-			if player == *g {
-				lives = 0
+			if player.row == g.row && player.col == g.col {
+				lives -= 1
+				if lives != 0 {
+					moveCursor(player.row, player.col)
+					fmt.Print(cfg.Death)
+					moveCursor(len(maze)+2, 0)
+					time.Sleep(1000 * time.Microsecond)
+					player.row, player.col = player.startRow, player.startCol
+				}
 			}
 		}
 
